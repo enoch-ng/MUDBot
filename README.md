@@ -1,4 +1,4 @@
-# MUDBot, a Discord bot that assists in playing MUD games through DMs
+# MUDBot, a Discord bot that assists in playing MUD games
 
 To run MUDBot, you will need discord.py. You can install it through:
 
