@@ -43,7 +43,7 @@ async def on_message(msg):
 async def connect(ctx):
 	if ctx.message.author.id not in connected:
 		await bot.say("Connecting to game server ... ")
-		socket.send(ctx.message.author.id.encode("utf-8"), flags = zmq.SNDMORE)
+		socket.send(ctx.message.author.id.encode("utf-8"), zmq.SNDMORE)
 		socket.send(b"connect")
 		await bot.say(socket.recv().decode("utf-8"))
 		connected.append(ctx.message.author.id) # This implicitly assumes the connection was successful, which may not be correct
@@ -58,7 +58,7 @@ async def disconnect(ctx):
 		await bot.say("Disconnecting from game server ... ")
 		socket.send(ctx.message.author.id.encode("utf-8"), zmq.SNDMORE)
 		socket.send(b"disconnect")
-		socket.recv()
+		socket.recv() # "Dummy" recv() call to preserve req-rep pattern
 		connected.remove(ctx.message.author.id) # This implicitly assumes the disconnection was successful
 		print("%s disconnected" % ctx.message.author)
 		await bot.say("Disconnected.")
@@ -69,7 +69,7 @@ async def disconnect(ctx):
 @bot.event
 async def on_command_error(error, ctx):
 	if ctx.message.author.id not in connected and isinstance(error, commands.CommandNotFound):
-		await bot.send_message(ctx.message.channel, "'%s' is not a valid MUDBot command. Try `connect` to connect to the game, or `help` to view a complete list of commands." % ctx.message.content.split()[0])
+		await bot.send_message(ctx.message.channel, "'%s' is not a valid MUDBot command. Type `connect` to connect to the game, or `help` to view a complete list of commands." % ctx.message.content.split()[0])
 
 bot.run(TOKEN)
 
