@@ -1,5 +1,4 @@
 # MUDBot, a Discord bot that assists in playing MUD games through DMs.
-# TODO FOR NEXT TIME: Try to get socket stuff working, figure out why it wasn't working the first time (probably by inspecting the example client.py
 
 import discord
 from discord.ext import commands
@@ -9,65 +8,63 @@ import zmq
 TOKEN = "MjkyMjM3MjM3MzcyODQ2MDgx.C61HMA.tAoMm0TWxe3g_yfcJcqBxM6W52k"
 PREFIX = ""
 DESC = "MUDBot, a Discord bot that assists in playing MUD games through DMs." 
-
-""" Other attributes of commands.Bot I might want to use:
-	command_not_found
-	command_has_no_subcommands
-"""
+SERVER = "localhost:5555"
 
 bot = commands.Bot(command_prefix = PREFIX)
-#bot.remove_command("help")
-#commands = ["connect", "disconnect", "help"]
 context = zmq.Context()
-socket = context.socket(zmq.REQ) # In the future, I might want to use one socket for each connection, and keep them all in a list here. Of course, it's perfectly possible for me to do everything with one socket and just include the user ID in each message, but is it the best?
-connected = [] # Holds the IDs of all users who are connected to a (the?) server
+socket = context.socket(zmq.REQ) # We use one socket for all connections 
+never_send = ["connect", "disconnect", "quit"] # Never send these to the game server. Handle them in the bot instead
+connected = [] # Holds the IDs of all users who are connected to the game server
 
 @bot.event
 async def on_ready():
 	print(DESC)
-	print("Connecting to game server ... ")
-	socket.connect("tcp://localhost:5555")
-	print("Logged in as {0}, ID: {0.id}".format(bot.user))
-	print("-------------------------------")
+	print("Logged into Discord as {0}, ID: {0.id}".format(bot.user))
+	await bot.change_presence(game = discord.Game(name="Type 'connect' or 'help'"))
+	print("Connecting to game server")
+	socket.connect("tcp://%s" % SERVER)
+	print("Waiting for messages")
 
 @bot.event
 async def on_message(msg):
 	# Author: msg.author, content: msg.content
 	if msg.author == bot.user: # We can't have the bot talking to itself!
 		return
-	if msg.author.id in connected: # We process the message IFF the user is currently connected to the game server
-		#await bot.send_message(msg.channel, "Author: {0.author.id}\nMessage: '{0.content}'".format(msg))
+	if msg.author.id in connected and msg.content not in never_send: # Only process the message if the user is connected to the game server
 		print("Received message from {0.author}: '{0.content}'".format(msg))
-		#socket.send(msg.content.encode("utf-8")) # Since I'm sending bytes instead of using send_string(), only ASCII characters are supported. This might cause problems when attempting to send messages with special characters like emojis or accents. (Emojis don't cause it to break entirely, but should still not be allowed.)
-		socket.send_string(msg.content)
+		# Send a multipart message with 2 frames: first contains the user ID, second contains the message
+		socket.send(msg.author.id.encode("utf-8"), zmq.SNDMORE)
+		socket.send(msg.content.encode("utf-8")) # Only ASCII characters are supported with send(). This might cause problems with special characters like emojis or accents.
 		await bot.send_message(msg.channel, socket.recv().decode("utf-8"))
 	await bot.process_commands(msg)
-	
+	print(connected)	
+
 @bot.command(pass_context = True)
 async def connect(ctx):
 	if ctx.message.author.id not in connected:
 		await bot.say("Connecting to game server ... ")
-		# Actual connecting stuff here
-		connected.append(ctx.message.author.id) # This implicitly assumes the connection was successful, which is not always correct
+		socket.send(ctx.message.author.id.encode("utf-8"), flags = zmq.SNDMORE)
+		socket.send(b"connect")
+		await bot.say(socket.recv().decode("utf-8"))
+		connected.append(ctx.message.author.id) # This implicitly assumes the connection was successful, which may not be correct
 		print("%s connected" % ctx.message.author)
-		await bot.say("Connected.")
 	else:
 		print("Command connect failed: already connected.")
-		await bot.say("You already already connected.")
-	""" This should only work if the user is not connected. """
+		await bot.say("You are already connected.")
 	
 @bot.command(pass_context = True, aliases = ["quit"])
 async def disconnect(ctx):
 	if ctx.message.author.id in connected:
 		await bot.say("Disconnecting from game server ... ")
-		# Actual disconnecting stuff here ...
+		socket.send(ctx.message.author.id.encode("utf-8"), zmq.SNDMORE)
+		socket.send(b"disconnect")
+		socket.recv()
 		connected.remove(ctx.message.author.id) # This implicitly assumes the disconnection was successful
 		print("%s disconnected" % ctx.message.author)
 		await bot.say("Disconnected.")
 	else:
 		print("Command disconnect failed: not connected.")
 		await bot.say("You are not connected to the game server.")
-	""" This should only work if the user is currently connected. """
 	
 @bot.event
 async def on_command_error(error, ctx):
