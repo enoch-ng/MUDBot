@@ -31,13 +31,12 @@ async def on_message(msg):
 	if msg.author == bot.user: # We can't have the bot talking to itself!
 		return
 	if msg.author.id in connected and msg.content not in never_send: # Only process the message if the user is connected to the game server
-		print("Received message from {0.author}: '{0.content}'".format(msg))
+		print("Message from {0.author}: '{0.content}'".format(msg))
 		# Send a multipart message with 2 frames: first contains the user ID, second contains the message
 		socket.send(msg.author.id.encode("utf-8"), zmq.SNDMORE)
 		socket.send(msg.content.encode("utf-8")) # Only ASCII characters are supported with send(). This might cause problems with special characters like emojis or accents.
 		await bot.send_message(msg.channel, socket.recv().decode("utf-8"))
 	await bot.process_commands(msg)
-	print(connected)	
 
 @bot.command(pass_context = True)
 async def connect(ctx):
