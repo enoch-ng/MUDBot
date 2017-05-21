@@ -4,6 +4,7 @@ import discord
 from discord.ext import commands
 import asyncio
 import zmq
+import zmq.asyncio
 
 TOKEN = "MjkyMjM3MjM3MzcyODQ2MDgx.C61HMA.tAoMm0TWxe3g_yfcJcqBxM6W52k"
 PREFIX = ""
@@ -16,6 +17,15 @@ socket = context.socket(zmq.REQ) # We use one socket for all connections
 never_send = ["connect", "disconnect", "quit"] # Never send these to the game server. Handle them in the bot instead
 connected = [] # Holds the IDs of all users who are connected to the game server
 
+async_context = zmq.asyncio.Context()
+async_socket = async_context.socket(zmq.PULL)
+
+@asyncio.coroutine
+def recv_and_process(async_sock, sock):
+	yield from async_sock.recv()
+	sock.send(b"")
+	print("Received message!")
+
 @bot.event
 async def on_ready():
 	print(DESC)
@@ -23,6 +33,7 @@ async def on_ready():
 	await bot.change_presence(game = discord.Game(name="Type 'connect' or 'help'"))
 	print("Connecting to game server")
 	socket.connect("tcp://%s" % SERVER)
+	async_socket.bind("tcp://%s" % SERVER)
 	print("Waiting for messages")
 
 @bot.event
@@ -41,7 +52,7 @@ async def on_message(msg):
 @bot.command(pass_context = True)
 async def connect(ctx):
 	if ctx.message.author.id not in connected:
-		await bot.say("Connecting to game server ... ")
+		await bot.say("Connecting to game server...")
 		socket.send(ctx.message.author.id.encode("utf-8"), zmq.SNDMORE)
 		socket.send(b"connect")
 		await bot.say(socket.recv().decode("utf-8"))
@@ -54,7 +65,7 @@ async def connect(ctx):
 @bot.command(pass_context = True, aliases = ["quit"])
 async def disconnect(ctx):
 	if ctx.message.author.id in connected:
-		await bot.say("Disconnecting from game server ... ")
+		await bot.say("Disconnecting from game server...")
 		socket.send(ctx.message.author.id.encode("utf-8"), zmq.SNDMORE)
 		socket.send(b"disconnect")
 		socket.recv() # "Dummy" recv() call to preserve req-rep pattern
@@ -70,5 +81,14 @@ async def on_command_error(error, ctx):
 	if ctx.message.author.id not in connected and isinstance(error, commands.CommandNotFound):
 		await bot.send_message(ctx.message.channel, "'%s' is not a valid MUDBot command. Type `connect` to connect to the game, or `help` to view a complete list of commands." % ctx.message.content.split()[0])
 
-bot.run(TOKEN)
+#bot.run(TOKEN)
+loop = asyncio.get_event_loop()
+try:
+	asyncio.ensure_future(recv_and_process(async_socket, socket));
+	loop.run_until_complete(bot.start(TOKEN))
+except KeyboardInterrupt:
+	loop.run_until_complete(bot.logout())
+	# Cancel lingering tasks
+finally:
+	loop.close()
 
