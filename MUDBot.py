@@ -23,8 +23,11 @@ connected = [] # Holds the IDs of all users who are connected to the game server
 
 async def handle_server_msg():
 	msg = r_socket.recv(zmq.NOBLOCK).decode("utf-8")
+	print("Got a message from the server")
 	# The bot will send the message to all intended recipients. At the moment it will DM it to them regardless of how they choose to interact with the bot. In the future I can change it up so that it sends the message in whatever channel they last used. discord.utils.find or discord.utils.get might help with that, and maybe also the messages attribute of discord.Client
-	print("Got message")
+	for userid in connected:
+		user = await bot.get_user_info(userid)
+		await bot.send_message(user, msg);
 
 async def listen_server_msg():
 	await bot.wait_until_ready()
