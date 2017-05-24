@@ -12,7 +12,7 @@ DESC = "MUDBot, a Discord bot that assists in playing MUD games through DMs."
 SERVER_ADDR = "127.0.0.1"
 S_PORT = "5555"
 R_PORT = "9999"
-CHECK_SERVER_MSG_INTERVAL = 0.5
+CHECK_SERVER_MSG_INTERVAL = 0
 
 bot = commands.Bot(command_prefix = PREFIX)
 context = zmq.Context()
@@ -22,11 +22,14 @@ never_send = ["connect", "disconnect", "quit"] # Never send these to the game se
 connected = [] # Holds the IDs of all users who are connected to the game server
 
 async def handle_server_msg():
-	msg = r_socket.recv(zmq.NOBLOCK).decode("utf-8")
-	print("Got a message from the server")
+	# The non-blocking recv() call will raise zmq.error.Again if there is no message to receive
+	messages = r_socket.recv_multipart(zmq.NOBLOCK)
+	# In the notif multipart message, the first frame contains the actual notification message and all subsequent frames contain players to whom the message should be sent
+	msg = messages[0].decode("utf-8")
 	# The bot will send the message to all intended recipients. At the moment it will DM it to them regardless of how they choose to interact with the bot. In the future I can change it up so that it sends the message in whatever channel they last used. discord.utils.find or discord.utils.get might help with that, and maybe also the messages attribute of discord.Client
-	for userid in connected:
-		user = await bot.get_user_info(userid)
+	for i in messages[1:]:
+		print("Notifying user " + i.decode("utf-8"))
+		user = await bot.get_user_info(i.decode("utf-8"))
 		await bot.send_message(user, msg);
 
 async def listen_server_msg():
